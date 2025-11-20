@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversor de Capas ArcGIS Pro (.lyrx)</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .file-drop-area {
+            transition: all 0.3s ease;
+        }
+        .file-drop-area.drag-over {
+            background-color: rgba(99, 102, 241, 0.1);
+            border-color: #6366f1;
+            transform: scale(1.02);
+        }
+        .json-viewer {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .highlight-change {
+            animation: highlight 2s ease;
+        }
+        @keyframes highlight {
+            0% { background-color: rgba(251, 191, 36, 0.3); }
+            100% { background-color: transparent; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useCallback, useEffect, useRef } = React;
+
+        function LyrxConverter() {
+            const [inputFile, setInputFile] = useState(null);
+            const [inputContent, setInputContent] = useState(null);
+            const [outputContent, setOutputContent] = useState(null);
+            const [layerType, setLayerType] = useState(null);
+            const [convertedType, setConvertedType] = useState(null);
+            const [isDragging, setIsDragging] = useState(false);
+            const [showComparison, setShowComparison] = useState(false);
+            const [conversionLog, setConversionLog] = useState([]);
+            const [fieldName, setFieldName] = useState('');
+            const fileInputRef = useRef(null);
+
+            const detectLayerType = (content) => {
+                if (content.layerDefinitions && content.layerDefinitions[0]) {
+                    const layerDef = content.layerDefinitions[0];
+                    if (layerDef.type === 'CIMFeatureLayer') {
+                        return 'feature';
+                    } else if (layerDef.type === 'CIMRasterLayer') {
+                        return 'raster';
+                    }
+                }
+                return 'unknown';
+            };
+
+            const extractFeatureSymbology = (featureDef) => {
+                const classes = [];
+                const log = [];
+                
+                if (featureDef.renderer && featureDef.renderer.groups) {
+                    featureDef.renderer.groups.forEach(group => {
+                        if (group.classes) {
+                            group.classes.forEach(cls => {
+                                let color = [194, 194, 194, 100]; // Default gray
+                                
+                                if (cls.symbol && cls.symbol.symbol && cls.symbol.symbol.symbolLayers) {
+                                    cls.symbol.symbol.symbolLayers.forEach(layer => {
+                                        if (layer.type === 'CIMSolidFill' && layer.color) {
+                                            color = layer.color.values;
+                                        }
+                                    });
+                                }
+                                
+                                const values = cls.values ? cls.values.map(v => v.fieldValues ? v.fieldValues[0] : '') : [''];
+                                
+                                classes.push({
+                                    label: cls.label || values[0] || 'Sin etiqueta',
+                                    values: values,
+                                    color: color
+                                });
+                                
+                                log.push(`✓ Extraída clase: ${cls.label || values[0]}`);
+                            });
+                        }
+                    });
+                }
+                
+                return { classes, log };
+            };
+
+            const extractRasterSymbology = (rasterDef) => {
+                const classes = [];
+                const log = [];
+                
+                if (rasterDef.colorizer && rasterDef.colorizer.groups) {
+                    rasterDef.colorizer.groups.forEach(group => {
+                        if (group.classes) {
+                            group.classes.forEach(cls => {
+                                classes.push({
+                                    label: cls.label || cls.values[0] || 'Sin etiqueta',
+                                    values: cls.values || [cls.label],
+                                    color: cls.color ? cls.color.values : [194, 194, 194, 100]
+                                });
+                                
+                                log.push(`✓ Extraída clase: ${cls.label || cls.values[0]}`);
+                            });
+                        }
+                    });
+                }
+                
+                return { classes, log };
+            };
+
+            const convertToRaster = (featureContent, customFieldName) => {
+                const log = ['🔄 Iniciando conversión de Feature a Raster...'];
+                const converted = JSON.parse(JSON.stringify(featureContent));
+                
+                if (converted.layerDefinitions && converted.layerDefinitions[0]) {
+                    const featureDef = converted.layerDefinitions[0];
+                    
+                    // Extraer simbología
+                    const { classes, log: extractLog } = extractFeatureSymbology(featureDef);
+                    log.push(...extractLog);
+                    
+                    // Cambiar tipo de capa
+                    featureDef.type = 'CIMRasterLayer';
+                    log.push('✓ Tipo de capa cambiado a CIMRasterLayer');
+                    
+                    // Eliminar propiedades específicas de feature
+                    delete featureDef.featureTable;
+                    delete featureDef.renderer;
+                    delete featureDef.featureTemplates;
+                    delete featureDef.htmlPopupFormat;
+                    delete featureDef.labelClasses;
+                    delete featureDef.layer3DProperties;
+                    delete featureDef.scaleSymbols;
+                    delete featureDef.snappable;
+                    log.push('✓ Propiedades de Feature eliminadas');
+                    
+                    // Añadir conexión de datos raster
+                    featureDef.dataConnection = {
+                        type: "CIMStandardDataConnection",
+                        workspaceConnectionString: "DATABASE=.\\SIOSE.gdb",
+                        workspaceFactory: "FileGDB",
+                        dataset: featureDef.name || "CONVERTED_RASTER",
+                        datasetType: "esriDTRasterDataset"
+                    };
+                    log.push('✓ Conexión de datos raster añadida');
+                    
+                    // Crear colorizer con las clases extraídas
+                    const fieldNameToUse = customFieldName || 'Value';
+                    featureDef.colorizer = {
+                        type: "CIMRasterUniqueValueColorizer",
+                        resamplingType: "NearestNeighbor",
+                        noDataColor: {
+                            type: "CIMRGBColor",
+                            values: [255, 255, 255, 0]
+                        },
+                        fieldName: fieldNameToUse,
+                        groups: [{
+                            type: "CIMRasterUniqueValueGroup",
+                            classes: classes.map(cls => ({
+                                type: "CIMRasterUniqueValueClass",
+                                values: cls.values,
+                                label: cls.label,
+                                color: {
+                                    type: "CIMRGBColor",
+                                    values: cls.color
+                                }
+                            })),
+                            heading: fieldNameToUse
+                        }]
+                    };
+                    log.push(`✓ Colorizer creado con ${classes.length} clases`);
+                    log.push(`✓ Campo de clasificación: ${fieldNameToUse}`);
+                    
+                    // Añadir tabla de atributos raster
+                    featureDef.attributeTable = {
+                        type: "CIMRasterTable",
+                        displayField: fieldNameToUse,
+                        editable: true
+                    };
+                    log.push('✓ Tabla de atributos raster añadida');
+                    
+                    // Actualizar referencias de ruta
+                    if (converted.layers && converted.layers[0]) {
+                        const path = converted.layers[0].replace('.json', '_RASTER.json');
+                        converted.layers[0] = path;
+                        featureDef.uRI = path;
+                    }
+                }
+                
+                log.push('✅ Conversión completada exitosamente');
+                return { converted, log };
+            };
+
+            const convertToFeature = (rasterContent) => {
+                const log = ['🔄 Iniciando conversión de Raster a Feature...'];
+                const converted = JSON.parse(JSON.stringify(rasterContent));
+                
+                if (converted.layerDefinitions && converted.layerDefinitions[0]) {
+                    const rasterDef = converted.layerDefinitions[0];
+                    
+                    // Extraer simbología
+                    const { classes, log: extractLog } = extractRasterSymbology(rasterDef);
+                    log.push(...extractLog);
+                    
+                    // Cambiar tipo de capa
+                    rasterDef.type = 'CIMFeatureLayer';
+                    log.push('✓ Tipo de capa cambiado a CIMFeatureLayer');
+                    
+                    // Eliminar propiedades específicas de raster
+                    delete rasterDef.dataConnection;
+                    delete rasterDef.colorizer;
+                    delete rasterDef.attributeTable;
+                    log.push('✓ Propiedades de Raster eliminadas');
+                    
+                    // Añadir propiedades 3D
+                    rasterDef.layer3DProperties = {
+                        type: "CIM3DLayerProperties",
+                        castShadows: true,
+                        isLayerLit: true,
+                        layerFaceCulling: "None",
+                        maxDistance: -1,
+                        minDistance: -1,
+                        verticalExaggeration: 1,
+                        exaggerationMode: "ScaleZ",
+                        lighting: "OneSideDataNormal",
+                        optimizeMarkerTransparency: true
+                    };
+                    log.push('✓ Propiedades 3D añadidas');
+                    
+                    // Crear renderer con las clases extraídas
+                    rasterDef.renderer = {
+                        type: "CIMUniqueValueRenderer",
+                        fields: ["legenda_simple"],
+                        defaultSymbol: {
+                            type: "CIMSymbolReference",
+                            symbol: {
+                                type: "CIMPolygonSymbol",
+                                symbolLayers: [{
+                                    type: "CIMSolidFill",
+                                    enable: true,
+                                    color: {
+                                        type: "CIMRGBColor",
+                                        values: [225, 225, 225, 100]
+                                    }
+                                }]
+                            }
+                        },
+                        groups: [{
+                            type: "CIMUniqueValueGroup",
+                            classes: classes.map(cls => ({
+                                type: "CIMUniqueValueClass",
+                                label: cls.label,
+                                patch: "Default",
+                                symbol: {
+                                    type: "CIMSymbolReference",
+                                    symbol: {
+                                        type: "CIMPolygonSymbol",
+                                        symbolLayers: [{
+                                            type: "CIMSolidFill",
+                                            enable: true,
+                                            color: {
+                                                type: "CIMRGBColor",
+                                                values: cls.color
+                                            }
+                                        }],
+                                        angleAlignment: "Map"
+                                    }
+                                },
+                                values: cls.values.map(v => ({
+                                    type: "CIMUniqueValue",
+                                    fieldValues: [v]
+                                })),
+                                visible: true
+                            })),
+                            heading: "legenda_simple"
+                        }],
+                        isDefaultSymbolVisible: true,
+                        polygonSymbolColorTarget: "Fill"
+                    };
+                    log.push(`✓ Renderer creado con ${classes.length} clases`);
+                    
+                    // Añadir propiedades de feature
+                    rasterDef.autoGenerateFeatureTemplates = true;
+                    rasterDef.scaleSymbols = true;
+                    rasterDef.snappable = true;
+                    log.push('✓ Propiedades de Feature añadidas');
+                    
+                    // Añadir tabla de features básica
+                    rasterDef.featureTable = {
+                        type: "CIMFeatureTable",
+                        displayField: "legenda_simple",
+                        editable: true
+                    };
+                    log.push('✓ Tabla de features añadida');
+                    
+                    // Actualizar referencias de ruta
+                    if (converted.layers && converted.layers[0]) {
+                        const path = converted.layers[0].replace('_RASTER', '').replace('.json', '_FEATURE.json');
+                        converted.layers[0] = path;
+                        rasterDef.uRI = path;
+                    }
+                }
+                
+                log.push('✅ Conversión completada exitosamente');
+                return { converted, log };
+            };
+
+            const handleFileUpload = (event) => {
+                const file = event.target.files[0];
+                if (file && file.name.endsWith('.lyrx')) {
+                    processFile(file);
+                }
+            };
+
+            const processFile = (file) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const content = JSON.parse(e.target.result);
+                        const type = detectLayerType(content);
+                        
+                        setInputFile(file);
+                        setInputContent(content);
+                        setLayerType(type);
+                        setOutputContent(null);
+                        setConvertedType(null);
+                        setConversionLog([]);
+                        setShowComparison(false);
+                        
+                        // Extraer nombre de campo si es raster
+                        if (type === 'raster' && content.layerDefinitions[0].colorizer) {
+                            setFieldName(content.layerDefinitions[0].colorizer.fieldName || 'Value');
+                        } else {
+                            setFieldName('Value');
+                        }
+                    } catch (error) {
+                        alert('Error al leer el archivo: ' + error.message);
+                    }
+                };
+                reader.readAsText(file);
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+                setIsDragging(true);
+            };
+
+            const handleDragLeave = (e) => {
+                e.preventDefault();
+                setIsDragging(false);
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                
+                const files = e.dataTransfer.files;
+                if (files.length > 0 && files[0].name.endsWith('.lyrx')) {
+                    processFile(files[0]);
+                }
+            };
+
+            const performConversion = () => {
+                if (layerType === 'feature') {
+                    const { converted, log } = convertToRaster(inputContent, fieldName);
+                    setOutputContent(converted);
+                    setConvertedType('raster');
+                    setConversionLog(log);
+                } else if (layerType === 'raster') {
+                    const { converted, log } = convertToFeature(inputContent);
+                    setOutputContent(converted);
+                    setConvertedType('feature');
+                    setConversionLog(log);
+                }
+                setShowComparison(true);
+            };
+
+            const downloadConvertedFile = () => {
+                if (outputContent && inputFile) {
+                    const blob = new Blob([JSON.stringify(outputContent, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    const suffix = convertedType === 'raster' ? '_RASTER' : '_FEATURE';
+                    a.href = url;
+                    a.download = inputFile.name.replace('.lyrx', `${suffix}.lyrx`);
+                    a.click();
+                    URL.revokeObjectURL(url);
+                }
+            };
+
+            const reset = () => {
+                setInputFile(null);
+                setInputContent(null);
+                setOutputContent(null);
+                setLayerType(null);
+                setConvertedType(null);
+                setConversionLog([]);
+                setShowComparison(false);
+                setFieldName('Value');
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                }
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    {/* Header */}
+                    <div className="gradient-bg text-white py-8 shadow-lg">
+                        <div className="container mx-auto px-4">
+                            <h1 className="text-3xl font-bold text-center">Conversor de Capas ArcGIS Pro</h1>
+                            <p className="text-center mt-2 text-purple-100">Convierte archivos .lyrx entre Feature Layer y Raster Layer</p>
+                        </div>
+                    </div>
+
+                    <div className="container mx-auto px-4 py-8 max-w-6xl">
+                        {/* Upload Area */}
+                        {!inputFile && (
+                            <div className="mb-8">
+                                <div
+                                    className={`file-drop-area border-4 border-dashed rounded-xl p-12 text-center cursor-pointer
+                                        ${isDragging ? 'drag-over' : 'border-gray-300 hover:border-indigo-400'}`}
+                                    onDragOver={handleDragOver}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={handleDrop}
+                                    onClick={() => fileInputRef.current?.click()}
+                                >
+                                    <svg className="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                    </svg>
+                                    <p className="text-xl mb-2">Arrastra tu archivo .lyrx aquí</p>
+                                    <p className="text-gray-500">o haz clic para seleccionar</p>
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept=".lyrx"
+                                        onChange={handleFileUpload}
+                                        className="hidden"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* File Info and Conversion */}
+                        {inputFile && (
+                            <div className="space-y-6">
+                                {/* File Info Card */}
+                                <div className="bg-white rounded-lg shadow-md p-6">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h2 className="text-xl font-semibold">Archivo Cargado</h2>
+                                        <button
+                                            onClick={reset}
+                                            className="text-red-500 hover:text-red-700 font-medium"
+                                        >
+                                            ✕ Cerrar
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-2 gap-4 mb-4">
+                                        <div>
+                                            <p className="text-sm text-gray-500">Nombre:</p>
+                                            <p className="font-medium">{inputFile.name}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm text-gray-500">Tipo detectado:</p>
+                                            <p className="font-medium">
+                                                {layerType === 'feature' && (
+                                                    <span className="text-blue-600">📍 Feature Layer</span>
+                                                )}
+                                                {layerType === 'raster' && (
+                                                    <span className="text-green-600">🗺️ Raster Layer</span>
+                                                )}
+                                                {layerType === 'unknown' && (
+                                                    <span className="text-red-600">❓ Desconocido</span>
+                                                )}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {layerType !== 'unknown' && (
+                                        <div className="mt-6 space-y-4">
+                                            {layerType === 'feature' && (
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Nombre del campo para clasificación raster:
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={fieldName}
+                                                        onChange={(e) => setFieldName(e.target.value)}
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                        placeholder="Ej: Value, legenda_simple, CODIIGE"
+                                                    />
+                                                    <p className="text-xs text-gray-500 mt-1">
+                                                        Este será el campo utilizado en el colorizer del raster
+                                                    </p>
+                                                </div>
+                                            )}
+                                            
+                                            <button
+                                                onClick={performConversion}
+                                                className="w-full bg-indigo-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-indigo-700 transition-colors"
+                                            >
+                                                {layerType === 'feature' 
+                                                    ? '🔄 Convertir a Raster Layer' 
+                                                    : '🔄 Convertir a Feature Layer'}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Conversion Log */}
+                                {conversionLog.length > 0 && (
+                                    <div className="bg-white rounded-lg shadow-md p-6">
+                                        <h3 className="text-lg font-semibold mb-3">Registro de Conversión</h3>
+                                        <div className="bg-gray-50 rounded p-4 max-h-60 overflow-y-auto">
+                                            {conversionLog.map((log, index) => (
+                                                <div 
+                                                    key={index} 
+                                                    className="text-sm py-1"
+                                                    style={{
+                                                        color: log.startsWith('✓') ? '#10b981' : 
+                                                               log.startsWith('✅') ? '#059669' :
+                                                               log.startsWith('🔄') ? '#3b82f6' : '#6b7280'
+                                                    }}
+                                                >
+                                                    {log}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Download Section */}
+                                {outputContent && (
+                                    <div className="bg-green-50 border-2 border-green-200 rounded-lg p-6">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h3 className="text-lg font-semibold text-green-800">
+                                                    ✅ Conversión Exitosa
+                                                </h3>
+                                                <p className="text-green-600 mt-1">
+                                                    Archivo convertido a {convertedType === 'raster' ? 'Raster Layer' : 'Feature Layer'}
+                                                </p>
+                                            </div>
+                                            <button
+                                                onClick={downloadConvertedFile}
+                                                className="bg-green-600 text-white py-2 px-6 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
+                                            >
+                                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                                </svg>
+                                                Descargar Archivo Convertido
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Comparison View */}
+                                {showComparison && inputContent && outputContent && (
+                                    <div className="bg-white rounded-lg shadow-md p-6">
+                                        <h3 className="text-lg font-semibold mb-4">Comparación de Estructuras</h3>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <h4 className="font-medium text-sm text-gray-600 mb-2">Original ({layerType})</h4>
+                                                <div className="bg-gray-50 p-3 rounded border border-gray-200 max-h-96 overflow-auto">
+                                                    <pre className="json-viewer text-xs">
+                                                        {JSON.stringify({
+                                                            type: inputContent.layerDefinitions[0].type,
+                                                            hasRenderer: !!inputContent.layerDefinitions[0].renderer,
+                                                            hasColorizer: !!inputContent.layerDefinitions[0].colorizer,
+                                                            hasFeatureTable: !!inputContent.layerDefinitions[0].featureTable,
+                                                            hasDataConnection: !!inputContent.layerDefinitions[0].dataConnection,
+                                                            hasAttributeTable: !!inputContent.layerDefinitions[0].attributeTable
+                                                        }, null, 2)}
+                                                    </pre>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <h4 className="font-medium text-sm text-gray-600 mb-2">Convertido ({convertedType})</h4>
+                                                <div className="bg-blue-50 p-3 rounded border border-blue-200 max-h-96 overflow-auto">
+                                                    <pre className="json-viewer text-xs">
+                                                        {JSON.stringify({
+                                                            type: outputContent.layerDefinitions[0].type,
+                                                            hasRenderer: !!outputContent.layerDefinitions[0].renderer,
+                                                            hasColorizer: !!outputContent.layerDefinitions[0].colorizer,
+                                                            hasFeatureTable: !!outputContent.layerDefinitions[0].featureTable,
+                                                            hasDataConnection: !!outputContent.layerDefinitions[0].dataConnection,
+                                                            hasAttributeTable: !!outputContent.layerDefinitions[0].attributeTable
+                                                        }, null, 2)}
+                                                    </pre>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Instructions */}
+                        <div className="mt-12 bg-white rounded-lg shadow-md p-6">
+                            <h3 className="text-xl font-semibold mb-4">📖 Instrucciones de Uso</h3>
+                            <div className="space-y-3 text-gray-700">
+                                <div className="flex gap-3">
+                                    <span className="text-2xl">1️⃣</span>
+                                    <p>Carga un archivo .lyrx de ArcGIS Pro arrastrándolo o seleccionándolo</p>
+                                </div>
+                                <div className="flex gap-3">
+                                    <span className="text-2xl">2️⃣</span>
+                                    <p>La aplicación detectará automáticamente si es Feature Layer o Raster Layer</p>
+                                </div>
+                                <div className="flex gap-3">
+                                    <span className="text-2xl">3️⃣</span>
+                                    <p>Si es Feature Layer, especifica el nombre del campo para la clasificación raster</p>
+                                </div>
+                                <div className="flex gap-3">
+                                    <span className="text-2xl">4️⃣</span>
+                                    <p>Haz clic en convertir y descarga el archivo transformado</p>
+                                </div>
+                            </div>
+                            
+                            <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+                                <h4 className="font-semibold text-blue-900 mb-2">ℹ️ Información Importante</h4>
+                                <ul className="text-sm text-blue-800 space-y-1">
+                                    <li>• La conversión preserva los colores y etiquetas de las clases</li>
+                                    <li>• Feature → Raster: Se crea un colorizer con valores únicos</li>
+                                    <li>• Raster → Feature: Se crea un renderer con símbolos de polígono</li>
+                                    <li>• Los archivos convertidos mantienen la estructura JSON válida para ArcGIS Pro</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <footer className="mt-16 py-6 bg-gray-100 text-center text-gray-600">
+                        <p>Conversor de Capas ArcGIS Pro (.lyrx) - Feature ↔ Raster</p>
+                    </footer>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<LyrxConverter />, document.getElementById('root'));
+    </script>
+</body>
+</html>
