@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conversor de Capas ArcGIS Pro (.lyrx)</title>
+    <title>ArcGIS Pro Layer Converter (.lyrx)</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -32,6 +32,12 @@
             0% { background-color: rgba(251, 191, 36, 0.3); }
             100% { background-color: transparent; }
         }
+        .lang-switcher {
+            transition: all 0.3s ease;
+        }
+        .lang-switcher:hover {
+            transform: scale(1.05);
+        }
     </style>
 </head>
 <body>
@@ -40,7 +46,167 @@
     <script type="text/babel">
         const { useState, useCallback, useEffect, useRef } = React;
 
+        // Traducciones
+        const translations = {
+            es: {
+                title: "Conversor de Capas ArcGIS Pro",
+                subtitle: "Convierte archivos .lyrx entre Feature Layer y Raster Layer",
+                dragDropTitle: "Arrastra tu archivo .lyrx aquí",
+                dragDropSubtitle: "o haz clic para seleccionar",
+                uploadedFile: "Archivo Cargado",
+                close: "Cerrar",
+                fileName: "Nombre:",
+                detectedType: "Tipo detectado:",
+                featureLayer: "Feature Layer",
+                rasterLayer: "Raster Layer",
+                unknown: "Desconocido",
+                fieldNameLabel: "Nombre del campo para clasificación raster:",
+                fieldNamePlaceholder: "Ej: Value, legenda_simple, CODIIGE",
+                fieldNameHelp: "Este será el campo utilizado en el colorizer del raster",
+                convertToRaster: "🔄 Convertir a Raster Layer",
+                convertToFeature: "🔄 Convertir a Feature Layer",
+                conversionLog: "Registro de Conversión",
+                conversionSuccess: "✅ Conversión Exitosa",
+                fileConverted: "Archivo convertido a",
+                download: "Descargar Archivo Convertido",
+                structureComparison: "Comparación de Estructuras",
+                original: "Original",
+                converted: "Convertido",
+                instructions: "📖 Instrucciones de Uso",
+                step1: "Carga un archivo .lyrx de ArcGIS Pro arrastrándolo o seleccionándolo",
+                step2: "La aplicación detectará automáticamente si es Feature Layer o Raster Layer",
+                step3: "Si es Feature Layer, especifica el nombre del campo para la clasificación raster",
+                step4: "Haz clic en convertir y descarga el archivo transformado",
+                importantInfo: "ℹ️ Información Importante",
+                info1: "• La conversión preserva los colores y etiquetas de las clases",
+                info2: "• Feature → Raster: Se crea un colorizer con valores únicos",
+                info3: "• Raster → Feature: Se crea un renderer con símbolos de polígono",
+                info4: "• Los archivos convertidos mantienen la estructura JSON válida para ArcGIS Pro",
+                footer: "Conversor de Capas ArcGIS Pro (.lyrx) - Feature ↔ Raster",
+                logStart: "🔄 Iniciando conversión",
+                logTypeChanged: "✓ Tipo de capa cambiado",
+                logPropsRemoved: "✓ Propiedades eliminadas",
+                logPropsAdded: "✓ Propiedades añadidas",
+                logDataConnAdded: "✓ Conexión de datos añadida",
+                logColorizerCreated: "✓ Colorizer creado con",
+                logRendererCreated: "✓ Renderer creado con",
+                logClasses: "clases",
+                logFieldClass: "✓ Campo de clasificación:",
+                logTableAdded: "✓ Tabla añadida",
+                logCompleted: "✅ Conversión completada exitosamente",
+                logExtractedClass: "✓ Extraída clase:",
+                log3DProps: "✓ Propiedades 3D añadidas",
+                logFeatureProps: "✓ Propiedades de Feature añadidas"
+            },
+            en: {
+                title: "ArcGIS Pro Layer Converter",
+                subtitle: "Convert .lyrx files between Feature Layer and Raster Layer",
+                dragDropTitle: "Drag your .lyrx file here",
+                dragDropSubtitle: "or click to browse",
+                uploadedFile: "Uploaded File",
+                close: "Close",
+                fileName: "Name:",
+                detectedType: "Detected type:",
+                featureLayer: "Feature Layer",
+                rasterLayer: "Raster Layer",
+                unknown: "Unknown",
+                fieldNameLabel: "Field name for raster classification:",
+                fieldNamePlaceholder: "Ex: Value, legenda_simple, CODIIGE",
+                fieldNameHelp: "This will be the field used in the raster colorizer",
+                convertToRaster: "🔄 Convert to Raster Layer",
+                convertToFeature: "🔄 Convert to Feature Layer",
+                conversionLog: "Conversion Log",
+                conversionSuccess: "✅ Conversion Successful",
+                fileConverted: "File converted to",
+                download: "Download Converted File",
+                structureComparison: "Structure Comparison",
+                original: "Original",
+                converted: "Converted",
+                instructions: "📖 How to Use",
+                step1: "Load an ArcGIS Pro .lyrx file by dragging or selecting it",
+                step2: "The app will automatically detect if it's a Feature Layer or Raster Layer",
+                step3: "If it's a Feature Layer, specify the field name for raster classification",
+                step4: "Click convert and download the transformed file",
+                importantInfo: "ℹ️ Important Information",
+                info1: "• Conversion preserves class colors and labels",
+                info2: "• Feature → Raster: Creates a colorizer with unique values",
+                info3: "• Raster → Feature: Creates a renderer with polygon symbols",
+                info4: "• Converted files maintain valid JSON structure for ArcGIS Pro",
+                footer: "ArcGIS Pro Layer Converter (.lyrx) - Feature ↔ Raster",
+                logStart: "🔄 Starting conversion",
+                logTypeChanged: "✓ Layer type changed",
+                logPropsRemoved: "✓ Properties removed",
+                logPropsAdded: "✓ Properties added",
+                logDataConnAdded: "✓ Data connection added",
+                logColorizerCreated: "✓ Colorizer created with",
+                logRendererCreated: "✓ Renderer created with",
+                logClasses: "classes",
+                logFieldClass: "✓ Classification field:",
+                logTableAdded: "✓ Table added",
+                logCompleted: "✅ Conversion completed successfully",
+                logExtractedClass: "✓ Extracted class:",
+                log3DProps: "✓ 3D properties added",
+                logFeatureProps: "✓ Feature properties added"
+            }
+        };
+
+        // Componente de selector de idioma mejorado
+        function LanguageSelector({ language, setLanguage }) {
+            return (
+                <div className="absolute top-4 right-4 z-10">
+                    <div className="flex gap-2 bg-purple-700 bg-opacity-50 p-1 rounded-lg backdrop-blur-sm">
+                        <button
+                            onClick={() => setLanguage('es')}
+                            className={`lang-switcher px-3 py-1 rounded-md font-medium text-sm transition-all ${
+                                language === 'es' 
+                                    ? 'bg-white text-purple-700 shadow-lg scale-105' 
+                                    : 'text-white hover:bg-purple-600 hover:scale-105'
+                            }`}
+                            title="Cambiar a Español"
+                            aria-label="Cambiar idioma a Español"
+                        >
+                            🇪🇸 ES
+                        </button>
+                        <button
+                            onClick={() => setLanguage('en')}
+                            className={`lang-switcher px-3 py-1 rounded-md font-medium text-sm transition-all ${
+                                language === 'en' 
+                                    ? 'bg-white text-purple-700 shadow-lg scale-105' 
+                                    : 'text-white hover:bg-purple-600 hover:scale-105'
+                            }`}
+                            title="Switch to English"
+                            aria-label="Switch language to English"
+                        >
+                            🇬🇧 EN
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
         function LyrxConverter() {
+            // Cargar idioma preferido de localStorage o detectar del navegador
+            const [language, setLanguage] = useState(() => {
+                const savedLang = localStorage.getItem('preferredLanguage');
+                if (savedLang) return savedLang;
+                
+                // Detectar idioma del navegador
+                const browserLang = navigator.language || navigator.userLanguage;
+                if (browserLang && browserLang.startsWith('en')) {
+                    return 'en';
+                }
+                return 'es'; // Por defecto español
+            });
+            
+            // Guardar idioma preferido, actualizar atributos del documento
+            useEffect(() => {
+                localStorage.setItem('preferredLanguage', language);
+                document.documentElement.lang = language;
+                document.title = language === 'es' 
+                    ? 'Conversor de Capas ArcGIS Pro (.lyrx)'
+                    : 'ArcGIS Pro Layer Converter (.lyrx)';
+            }, [language]);
+            
             const [inputFile, setInputFile] = useState(null);
             const [inputContent, setInputContent] = useState(null);
             const [outputContent, setOutputContent] = useState(null);
@@ -51,6 +217,9 @@
             const [conversionLog, setConversionLog] = useState([]);
             const [fieldName, setFieldName] = useState('');
             const fileInputRef = useRef(null);
+
+            // Función para obtener texto traducido
+            const t = (key) => translations[language][key] || key;
 
             const detectLayerType = (content) => {
                 if (content.layerDefinitions && content.layerDefinitions[0]) {
@@ -90,7 +259,7 @@
                                     color: color
                                 });
                                 
-                                log.push(`✓ Extraída clase: ${cls.label || values[0]}`);
+                                log.push(`${t('logExtractedClass')} ${cls.label || values[0]}`);
                             });
                         }
                     });
@@ -113,7 +282,7 @@
                                     color: cls.color ? cls.color.values : [194, 194, 194, 100]
                                 });
                                 
-                                log.push(`✓ Extraída clase: ${cls.label || cls.values[0]}`);
+                                log.push(`${t('logExtractedClass')} ${cls.label || cls.values[0]}`);
                             });
                         }
                     });
@@ -123,7 +292,7 @@
             };
 
             const convertToRaster = (featureContent, customFieldName) => {
-                const log = ['🔄 Iniciando conversión de Feature a Raster...'];
+                const log = [`${t('logStart')} Feature → Raster...`];
                 const converted = JSON.parse(JSON.stringify(featureContent));
                 
                 if (converted.layerDefinitions && converted.layerDefinitions[0]) {
@@ -135,7 +304,7 @@
                     
                     // Cambiar tipo de capa
                     featureDef.type = 'CIMRasterLayer';
-                    log.push('✓ Tipo de capa cambiado a CIMRasterLayer');
+                    log.push(`${t('logTypeChanged')} CIMRasterLayer`);
                     
                     // Eliminar propiedades específicas de feature
                     delete featureDef.featureTable;
@@ -146,7 +315,7 @@
                     delete featureDef.layer3DProperties;
                     delete featureDef.scaleSymbols;
                     delete featureDef.snappable;
-                    log.push('✓ Propiedades de Feature eliminadas');
+                    log.push(`${t('logPropsRemoved')} Feature`);
                     
                     // Añadir conexión de datos raster
                     featureDef.dataConnection = {
@@ -156,7 +325,7 @@
                         dataset: featureDef.name || "CONVERTED_RASTER",
                         datasetType: "esriDTRasterDataset"
                     };
-                    log.push('✓ Conexión de datos raster añadida');
+                    log.push(`${t('logDataConnAdded')} raster`);
                     
                     // Crear colorizer con las clases extraídas
                     const fieldNameToUse = customFieldName || 'Value';
@@ -182,8 +351,8 @@
                             heading: fieldNameToUse
                         }]
                     };
-                    log.push(`✓ Colorizer creado con ${classes.length} clases`);
-                    log.push(`✓ Campo de clasificación: ${fieldNameToUse}`);
+                    log.push(`${t('logColorizerCreated')} ${classes.length} ${t('logClasses')}`);
+                    log.push(`${t('logFieldClass')} ${fieldNameToUse}`);
                     
                     // Añadir tabla de atributos raster
                     featureDef.attributeTable = {
@@ -191,7 +360,7 @@
                         displayField: fieldNameToUse,
                         editable: true
                     };
-                    log.push('✓ Tabla de atributos raster añadida');
+                    log.push(`${t('logTableAdded')} raster`);
                     
                     // Actualizar referencias de ruta
                     if (converted.layers && converted.layers[0]) {
@@ -201,12 +370,12 @@
                     }
                 }
                 
-                log.push('✅ Conversión completada exitosamente');
+                log.push(t('logCompleted'));
                 return { converted, log };
             };
 
             const convertToFeature = (rasterContent) => {
-                const log = ['🔄 Iniciando conversión de Raster a Feature...'];
+                const log = [`${t('logStart')} Raster → Feature...`];
                 const converted = JSON.parse(JSON.stringify(rasterContent));
                 
                 if (converted.layerDefinitions && converted.layerDefinitions[0]) {
@@ -218,13 +387,13 @@
                     
                     // Cambiar tipo de capa
                     rasterDef.type = 'CIMFeatureLayer';
-                    log.push('✓ Tipo de capa cambiado a CIMFeatureLayer');
+                    log.push(`${t('logTypeChanged')} CIMFeatureLayer`);
                     
                     // Eliminar propiedades específicas de raster
                     delete rasterDef.dataConnection;
                     delete rasterDef.colorizer;
                     delete rasterDef.attributeTable;
-                    log.push('✓ Propiedades de Raster eliminadas');
+                    log.push(`${t('logPropsRemoved')} Raster`);
                     
                     // Añadir propiedades 3D
                     rasterDef.layer3DProperties = {
@@ -239,7 +408,7 @@
                         lighting: "OneSideDataNormal",
                         optimizeMarkerTransparency: true
                     };
-                    log.push('✓ Propiedades 3D añadidas');
+                    log.push(t('log3DProps'));
                     
                     // Crear renderer con las clases extraídas
                     rasterDef.renderer = {
@@ -291,13 +460,13 @@
                         isDefaultSymbolVisible: true,
                         polygonSymbolColorTarget: "Fill"
                     };
-                    log.push(`✓ Renderer creado con ${classes.length} clases`);
+                    log.push(`${t('logRendererCreated')} ${classes.length} ${t('logClasses')}`);
                     
                     // Añadir propiedades de feature
                     rasterDef.autoGenerateFeatureTemplates = true;
                     rasterDef.scaleSymbols = true;
                     rasterDef.snappable = true;
-                    log.push('✓ Propiedades de Feature añadidas');
+                    log.push(t('logFeatureProps'));
                     
                     // Añadir tabla de features básica
                     rasterDef.featureTable = {
@@ -305,7 +474,7 @@
                         displayField: "legenda_simple",
                         editable: true
                     };
-                    log.push('✓ Tabla de features añadida');
+                    log.push(`${t('logTableAdded')} features`);
                     
                     // Actualizar referencias de ruta
                     if (converted.layers && converted.layers[0]) {
@@ -315,7 +484,7 @@
                     }
                 }
                 
-                log.push('✅ Conversión completada exitosamente');
+                log.push(t('logCompleted'));
                 return { converted, log };
             };
 
@@ -353,6 +522,7 @@
                 };
                 reader.readAsText(file);
             };
+
 
             const handleDragOver = (e) => {
                 e.preventDefault();
@@ -419,10 +589,11 @@
             return (
                 <div className="min-h-screen bg-gray-50">
                     {/* Header */}
-                    <div className="gradient-bg text-white py-8 shadow-lg">
+                    <div className="gradient-bg text-white py-8 shadow-lg relative">
+                        <LanguageSelector language={language} setLanguage={setLanguage} />
                         <div className="container mx-auto px-4">
-                            <h1 className="text-3xl font-bold text-center">Conversor de Capas ArcGIS Pro</h1>
-                            <p className="text-center mt-2 text-purple-100">Convierte archivos .lyrx entre Feature Layer y Raster Layer</p>
+                            <h1 className="text-3xl font-bold text-center">{t('title')}</h1>
+                            <p className="text-center mt-2 text-purple-100">{t('subtitle')}</p>
                         </div>
                     </div>
 
@@ -441,8 +612,8 @@
                                     <svg className="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                                     </svg>
-                                    <p className="text-xl mb-2">Arrastra tu archivo .lyrx aquí</p>
-                                    <p className="text-gray-500">o haz clic para seleccionar</p>
+                                    <p className="text-xl mb-2">{t('dragDropTitle')}</p>
+                                    <p className="text-gray-500">{t('dragDropSubtitle')}</p>
                                     <input
                                         ref={fileInputRef}
                                         type="file"
@@ -460,31 +631,31 @@
                                 {/* File Info Card */}
                                 <div className="bg-white rounded-lg shadow-md p-6">
                                     <div className="flex items-center justify-between mb-4">
-                                        <h2 className="text-xl font-semibold">Archivo Cargado</h2>
+                                        <h2 className="text-xl font-semibold">{t('uploadedFile')}</h2>
                                         <button
                                             onClick={reset}
                                             className="text-red-500 hover:text-red-700 font-medium"
                                         >
-                                            ✕ Cerrar
+                                            ✕ {t('close')}
                                         </button>
                                     </div>
                                     
                                     <div className="grid grid-cols-2 gap-4 mb-4">
                                         <div>
-                                            <p className="text-sm text-gray-500">Nombre:</p>
+                                            <p className="text-sm text-gray-500">{t('fileName')}</p>
                                             <p className="font-medium">{inputFile.name}</p>
                                         </div>
                                         <div>
-                                            <p className="text-sm text-gray-500">Tipo detectado:</p>
+                                            <p className="text-sm text-gray-500">{t('detectedType')}</p>
                                             <p className="font-medium">
                                                 {layerType === 'feature' && (
-                                                    <span className="text-blue-600">📍 Feature Layer</span>
+                                                    <span className="text-blue-600">📍 {t('featureLayer')}</span>
                                                 )}
                                                 {layerType === 'raster' && (
-                                                    <span className="text-green-600">🗺️ Raster Layer</span>
+                                                    <span className="text-green-600">🗺️ {t('rasterLayer')}</span>
                                                 )}
                                                 {layerType === 'unknown' && (
-                                                    <span className="text-red-600">❓ Desconocido</span>
+                                                    <span className="text-red-600">❓ {t('unknown')}</span>
                                                 )}
                                             </p>
                                         </div>
@@ -495,17 +666,17 @@
                                             {layerType === 'feature' && (
                                                 <div>
                                                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                        Nombre del campo para clasificación raster:
+                                                        {t('fieldNameLabel')}
                                                     </label>
                                                     <input
                                                         type="text"
                                                         value={fieldName}
                                                         onChange={(e) => setFieldName(e.target.value)}
                                                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                                        placeholder="Ej: Value, legenda_simple, CODIIGE"
+                                                        placeholder={t('fieldNamePlaceholder')}
                                                     />
                                                     <p className="text-xs text-gray-500 mt-1">
-                                                        Este será el campo utilizado en el colorizer del raster
+                                                        {t('fieldNameHelp')}
                                                     </p>
                                                 </div>
                                             )}
@@ -515,8 +686,8 @@
                                                 className="w-full bg-indigo-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-indigo-700 transition-colors"
                                             >
                                                 {layerType === 'feature' 
-                                                    ? '🔄 Convertir a Raster Layer' 
-                                                    : '🔄 Convertir a Feature Layer'}
+                                                    ? t('convertToRaster')
+                                                    : t('convertToFeature')}
                                             </button>
                                         </div>
                                     )}
@@ -525,16 +696,16 @@
                                 {/* Conversion Log */}
                                 {conversionLog.length > 0 && (
                                     <div className="bg-white rounded-lg shadow-md p-6">
-                                        <h3 className="text-lg font-semibold mb-3">Registro de Conversión</h3>
+                                        <h3 className="text-lg font-semibold mb-3">{t('conversionLog')}</h3>
                                         <div className="bg-gray-50 rounded p-4 max-h-60 overflow-y-auto">
                                             {conversionLog.map((log, index) => (
                                                 <div 
                                                     key={index} 
                                                     className="text-sm py-1"
                                                     style={{
-                                                        color: log.startsWith('✓') ? '#10b981' : 
-                                                               log.startsWith('✅') ? '#059669' :
-                                                               log.startsWith('🔄') ? '#3b82f6' : '#6b7280'
+                                                        color: log.includes('✓') ? '#10b981' : 
+                                                               log.includes('✅') ? '#059669' :
+                                                               log.includes('🔄') ? '#3b82f6' : '#6b7280'
                                                     }}
                                                 >
                                                     {log}
@@ -550,10 +721,10 @@
                                         <div className="flex items-center justify-between">
                                             <div>
                                                 <h3 className="text-lg font-semibold text-green-800">
-                                                    ✅ Conversión Exitosa
+                                                    {t('conversionSuccess')}
                                                 </h3>
                                                 <p className="text-green-600 mt-1">
-                                                    Archivo convertido a {convertedType === 'raster' ? 'Raster Layer' : 'Feature Layer'}
+                                                    {t('fileConverted')} {convertedType === 'raster' ? t('rasterLayer') : t('featureLayer')}
                                                 </p>
                                             </div>
                                             <button
@@ -563,7 +734,7 @@
                                                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                                 </svg>
-                                                Descargar Archivo Convertido
+                                                {t('download')}
                                             </button>
                                         </div>
                                     </div>
@@ -572,10 +743,10 @@
                                 {/* Comparison View */}
                                 {showComparison && inputContent && outputContent && (
                                     <div className="bg-white rounded-lg shadow-md p-6">
-                                        <h3 className="text-lg font-semibold mb-4">Comparación de Estructuras</h3>
+                                        <h3 className="text-lg font-semibold mb-4">{t('structureComparison')}</h3>
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
-                                                <h4 className="font-medium text-sm text-gray-600 mb-2">Original ({layerType})</h4>
+                                                <h4 className="font-medium text-sm text-gray-600 mb-2">{t('original')} ({layerType})</h4>
                                                 <div className="bg-gray-50 p-3 rounded border border-gray-200 max-h-96 overflow-auto">
                                                     <pre className="json-viewer text-xs">
                                                         {JSON.stringify({
@@ -590,7 +761,7 @@
                                                 </div>
                                             </div>
                                             <div>
-                                                <h4 className="font-medium text-sm text-gray-600 mb-2">Convertido ({convertedType})</h4>
+                                                <h4 className="font-medium text-sm text-gray-600 mb-2">{t('converted')} ({convertedType})</h4>
                                                 <div className="bg-blue-50 p-3 rounded border border-blue-200 max-h-96 overflow-auto">
                                                     <pre className="json-viewer text-xs">
                                                         {JSON.stringify({
@@ -612,33 +783,33 @@
 
                         {/* Instructions */}
                         <div className="mt-12 bg-white rounded-lg shadow-md p-6">
-                            <h3 className="text-xl font-semibold mb-4">📖 Instrucciones de Uso</h3>
+                            <h3 className="text-xl font-semibold mb-4">{t('instructions')}</h3>
                             <div className="space-y-3 text-gray-700">
                                 <div className="flex gap-3">
                                     <span className="text-2xl">1️⃣</span>
-                                    <p>Carga un archivo .lyrx de ArcGIS Pro arrastrándolo o seleccionándolo</p>
+                                    <p>{t('step1')}</p>
                                 </div>
                                 <div className="flex gap-3">
                                     <span className="text-2xl">2️⃣</span>
-                                    <p>La aplicación detectará automáticamente si es Feature Layer o Raster Layer</p>
+                                    <p>{t('step2')}</p>
                                 </div>
                                 <div className="flex gap-3">
                                     <span className="text-2xl">3️⃣</span>
-                                    <p>Si es Feature Layer, especifica el nombre del campo para la clasificación raster</p>
+                                    <p>{t('step3')}</p>
                                 </div>
                                 <div className="flex gap-3">
                                     <span className="text-2xl">4️⃣</span>
-                                    <p>Haz clic en convertir y descarga el archivo transformado</p>
+                                    <p>{t('step4')}</p>
                                 </div>
                             </div>
                             
                             <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                                <h4 className="font-semibold text-blue-900 mb-2">ℹ️ Información Importante</h4>
+                                <h4 className="font-semibold text-blue-900 mb-2">{t('importantInfo')}</h4>
                                 <ul className="text-sm text-blue-800 space-y-1">
-                                    <li>• La conversión preserva los colores y etiquetas de las clases</li>
-                                    <li>• Feature → Raster: Se crea un colorizer con valores únicos</li>
-                                    <li>• Raster → Feature: Se crea un renderer con símbolos de polígono</li>
-                                    <li>• Los archivos convertidos mantienen la estructura JSON válida para ArcGIS Pro</li>
+                                    <li>{t('info1')}</li>
+                                    <li>{t('info2')}</li>
+                                    <li>{t('info3')}</li>
+                                    <li>{t('info4')}</li>
                                 </ul>
                             </div>
                         </div>
@@ -646,13 +817,18 @@
 
                     {/* Footer */}
                     <footer className="mt-16 py-6 bg-gray-100 text-center text-gray-600">
-                        <p>Conversor de Capas ArcGIS Pro (.lyrx) - Feature ↔ Raster</p>
-                        <div className="mt-4" dangerouslySetInnerHTML={{__html: `
-                            <p xmlns:cc="http://creativecommons.org/ns#">
-                                Este trabajo de <span property="cc:attributionName">Iñaki Moro</span> 
-                                está bajo una licencia <a href="http://creativecommons.org/licenses/by/4.0/?ref=chooser-v1" target="_blank" rel="license noopener noreferrer" style="display:inline-block;">CC BY 4.0<img style="height:22px!important;margin-left:3px;vertical-align:text-bottom;" src="https://mirrors.creativecommons.org/presskit/icons/cc.svg?ref=chooser-v1"><img style="height:22px!important;margin-left:3px;vertical-align:text-bottom;" src="https://mirrors.creativecommons.org/presskit/icons/by.svg?ref=chooser-v1"></a>
-                            </p>
-                        `}} />
+                        <p>{t('footer')}</p>
+                        <div className="mt-4" dangerouslySetInnerHTML={{__html: 
+                            language === 'es' 
+                                ? `<p xmlns:cc="http://creativecommons.org/ns#">
+                                    Este trabajo de <span property="cc:attributionName">Iñaki Moro</span> 
+                                    está bajo una licencia <a href="http://creativecommons.org/licenses/by/4.0/?ref=chooser-v1" target="_blank" rel="license noopener noreferrer" style="display:inline-block;">CC BY 4.0<img style="height:22px!important;margin-left:3px;vertical-align:text-bottom;" src="https://mirrors.creativecommons.org/presskit/icons/cc.svg?ref=chooser-v1"><img style="height:22px!important;margin-left:3px;vertical-align:text-bottom;" src="https://mirrors.creativecommons.org/presskit/icons/by.svg?ref=chooser-v1"></a>
+                                  </p>`
+                                : `<p xmlns:cc="http://creativecommons.org/ns#">
+                                    This work by <span property="cc:attributionName">Iñaki Moro</span> 
+                                    is licensed under a <a href="http://creativecommons.org/licenses/by/4.0/?ref=chooser-v1" target="_blank" rel="license noopener noreferrer" style="display:inline-block;">CC BY 4.0 License<img style="height:22px!important;margin-left:3px;vertical-align:text-bottom;" src="https://mirrors.creativecommons.org/presskit/icons/cc.svg?ref=chooser-v1"><img style="height:22px!important;margin-left:3px;vertical-align:text-bottom;" src="https://mirrors.creativecommons.org/presskit/icons/by.svg?ref=chooser-v1"></a>
+                                  </p>`
+                        }} />
                     </footer>
                 </div>
             );
