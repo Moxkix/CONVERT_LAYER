@@ -1,4 +1,3 @@
-# CONVERT_LAYER
 # ArcGIS Pro Layer File Converter (.lyrx)
 
 A web-based tool for converting ArcGIS Pro layer files (.lyrx) between Feature Layers and Raster Layers in both directions.
