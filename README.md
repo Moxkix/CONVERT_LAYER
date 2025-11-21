@@ -85,6 +85,10 @@ open arcgis_lyrx_converter.html
 - **Vanilla JavaScript**: For file processing and JSON manipulation
 - **HTML5 File API**: For drag-and-drop functionality
 
+## 💡 Development
+
+This tool was developed by Iñaki Moro with AI assistance from Claude (Anthropic) for code generation and optimization. The conceptual design, requirements definition, and testing were directed by the author to solve a specific need in GIS workflows at UPV/EHU.
+
 ## 📋 Requirements
 
 - Modern web browser (Chrome, Firefox, Safari, Edge)
@@ -135,11 +139,15 @@ If you find a bug or have a suggestion, please open an issue on GitHub with:
 **Iñaki Moro**
 - Location: Universidad del País Vasco/Euskal Herriko Unibertsitatea (UPV/EHU)
 - Specialization: GIS, Academic Administration, Geography
+- Role: Concept, design, requirements, and project direction
+
+*Development assisted by Claude AI (Anthropic) for code implementation*
 
 ## 🙏 Acknowledgments
 
 - ArcGIS Pro development team for the .lyrx file format
 - The open-source GIS community
+- Claude AI (Anthropic) for development assistance
 - Contributors and users who provide feedback
 
 ## 📊 Version History
